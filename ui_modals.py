@@ -3,12 +3,16 @@ from tkinter import ttk, messagebox
 import datetime
 from db import (
     fetch_sessions,
-    fetch_sessions_by_day,
     update_session,
     delete_session,
     delete_sessions_by_day,
+    get_background_color,
+    get_daily_goal,
+    get_weekly_goal,
+    update_settings,
 )
 from time_utils import format_datetime, format_duration
+import re
 
 
 # -------------------------
@@ -68,8 +72,6 @@ def open_edit_modal(parent, session_id, refresh_callback):
                     "Invalid Time", "Start time must be before end time."
                 )
                 return
-
-            from db import update_session
 
             update_session(
                 session_id,
@@ -176,6 +178,162 @@ def open_all_sessions_window(parent):
 
     tree.bind("<Double-1>", on_click)
     refresh()
+
+
+# -------------------------
+# Settings Window
+# -------------------------
+def open_settings_window(parent, style):
+    win = tk.Toplevel(parent)
+    win.title("Settings")
+    win.geometry("720x420")
+    win.configure(background=get_background_color())
+
+    frame = ttk.Frame(win)
+    style = ttk.Style()
+    style.configure("TFrame", background=get_background_color())
+    frame.pack(fill="both", expand=True)
+
+    def validate_daily_hours(value):
+        # Validate 0-24, supports float
+        if not value:
+            save_button.config(state=tk.DISABLED)
+            return True
+        pattern = r"^(?:24(?:\.0+)?|(?:[0-9]|1[0-9]|2[0-3])(?:\.\d+)?|0?\.\d+)$"
+        if re.fullmatch(pattern, value) is None:
+            save_button.config(state=tk.DISABLED)
+            return False
+        save_button.config(state=tk.ACTIVE)
+        return True
+
+    def validate_weekly_hours(value):
+        # Validate 0-40, supports float
+        if not value:
+            save_button.config(state=tk.DISABLED)
+            return True
+        pattern = r"^(?:40(?:\.0+)?|(?:[0-9]|1[0-9]|2[0-9]|3[0-9])(?:\.\d+)?|0?\.\d+)$"
+        if re.fullmatch(pattern, value) is None:
+            save_button.config(state=tk.DISABLED)
+            return False
+        save_button.config(state=tk.ACTIVE)
+        return True
+
+    def on_cancel():
+        win.destroy()
+        win.update()
+
+    def validate_hex_color(value):
+        pattern = r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"
+        if re.fullmatch(pattern, value):
+            return True
+        return False
+
+    def validate_color_string(value):
+        try:
+            tk.Color(value)  # Done by ChatGPT, needs to be tested carefully
+            return True
+        except tk.TclError:
+            return False
+
+    def validate_hours_on_save(weekly, daily):
+        try:
+            return float(daily if daily else get_daily_goal()) <= float(
+                weekly if weekly else get_weekly_goal()
+            )
+        except Exception as e:
+            print("Error occured validating hours", e)
+            return False
+
+    def on_save():
+        updated_background = new_color.get() or None
+        updated_weekly_goal = new_weekly.get() or None
+        updated_daily_goal = new_daily.get() or None
+        save_new_color = False
+        save_new_weekly = False
+        save_new_daily = False
+
+        if updated_background and updated_background.startswith("#"):
+            save_new_color = validate_hex_color(updated_background)
+        elif updated_background:
+            save_new_color = validate_color_string()
+
+        if updated_weekly_goal:
+            save_new_weekly = validate_hours_on_save(
+                updated_weekly_goal, updated_daily_goal
+            )
+
+        if updated_daily_goal:
+            save_new_daily = validate_hours_on_save(
+                updated_daily_goal, updated_weekly_goal
+            )
+
+        # Create Fallbacks for each setting to not overwrite current settings in case of no valid values
+        if not save_new_color:
+            updated_background = get_background_color()
+
+        if not save_new_weekly:
+            updated_weekly_goal = get_weekly_goal()
+
+        if not save_new_daily:
+            updated_daily_goal = get_daily_goal()
+
+        if save_new_color or save_new_weekly or save_new_daily:
+            update_settings(
+                updated_background,
+                updated_weekly_goal,
+                updated_daily_goal,
+            )
+
+        win.destroy()
+        win.update()
+        parent.configure(background=get_background_color())
+        style.configure("btn.TFrame", background=get_background_color())
+
+    background_label = ttk.Label(frame, text="Current Background Color: ")
+    background_label.grid(row=0, column=0, padx=5, pady=10)
+    background_value_label = ttk.Label(frame, text=get_background_color())
+    background_value_label.grid(row=0, column=1, padx=5)
+    new_background_label = ttk.Label(frame, text="Enter new Color: ")
+    new_background_label.grid(row=0, column=2, padx=10)
+    new_color = ttk.Entry(frame)
+    new_color.grid(row=0, column=3, padx=5)
+
+    weekly_label = ttk.Label(frame, text="Current Weekly Goal (h): ")
+    weekly_label.grid(row=1, column=0, padx=5, pady=10)
+    weekly_value_label = ttk.Label(frame, text=get_weekly_goal())
+    weekly_value_label.grid(row=1, column=1, padx=5)
+    new_weekly_label = ttk.Label(frame, text="Enter new Goal: ")
+    new_weekly_label.grid(row=1, column=2, padx=10)
+    validate_weekly = (win.register(validate_weekly_hours), "%P")
+    new_weekly = ttk.Entry(frame, validate="key", validatecommand=validate_weekly)
+    new_weekly.grid(row=1, column=3, padx=5)
+
+    daily_label = ttk.Label(frame, text="Current Daily Goal (h): ")
+    daily_label.grid(row=2, column=0, padx=5, pady=10)
+    daily_value_label = ttk.Label(frame, text=get_daily_goal())
+    daily_value_label.grid(row=2, column=1, padx=5)
+    new_daily_label = ttk.Label(frame, text="Enter new Goal: ")
+    new_daily_label.grid(row=2, column=2, padx=10)
+    validate_daily = (win.register(validate_daily_hours), "%P")
+    new_daily = ttk.Entry(
+        frame,
+        validate="key",
+        validatecommand=validate_daily,
+    )
+    new_daily.grid(row=2, column=3, padx=5)
+
+    style = ttk.Style()
+    style.configure("Blue.TButton", background="#3487FF")
+    style.map("Blue.TButton", background=[("active", "#00A2E8")])
+
+    cancel_button = ttk.Button(frame, text="Cancel", command=on_cancel)
+    cancel_button.grid(row=3, column=0, padx=10, pady=20)
+    restore_button = ttk.Button(frame, text="Restore defaults")
+    restore_button.grid(row=3, column=1, padx=10)
+    save_button = ttk.Button(
+        frame, text="Save", default="disabled", command=on_save, style="Blue.TButton"
+    )
+    save_button.grid(row=3, column=2, padx=10)
 
 
 # -------------------------

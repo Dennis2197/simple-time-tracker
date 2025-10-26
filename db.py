@@ -14,6 +14,20 @@ def init_db():
                     end_time TEXT
                 )"""
     )
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            background_color TEXT,
+            weekly_goal TEXT,
+            daily_goal TEXT
+        )"""
+    )
+    c.execute("SELECT COUNT(*) FROM settings")
+    if c.fetchone()[0] == 0:
+        c.execute(
+            "INSERT INTO settings (background_color, weekly_goal, daily_goal) VALUES (?, ?, ?)",
+            ("#F0F0F0", "40", "8"),
+        )
     conn.commit()
     conn.close()
 
@@ -116,3 +130,66 @@ def fetch_daily_totals():
         diff = (end_dt - start_dt).total_seconds()
         daily[date_key] = daily.get(date_key, 0) + diff
     return daily
+
+
+def get_background_color():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT background_color
+        FROM settings
+    """
+    )
+    color = c.fetchall()
+    conn.close()
+
+    return color[0][0] if color else "#F0F0F0"
+
+
+def update_settings(color, weekly, daily):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO settings (id, background_color, weekly_goal, daily_goal)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            background_color=excluded.background_color,
+            weekly_goal=excluded.weekly_goal,
+            daily_goal=excluded.daily_goal
+    """,
+        (color, str(weekly), str(daily)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_weekly_goal():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT weekly_goal
+        FROM settings
+    """
+    )
+    weekly = c.fetchall()
+    conn.close()
+
+    return weekly[0][0] if weekly else "40"
+
+
+def get_daily_goal():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT daily_goal
+        FROM settings
+    """
+    )
+    daily = c.fetchall()
+    conn.close()
+
+    return daily[0][0] if daily else "8"

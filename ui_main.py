@@ -1,13 +1,21 @@
 import tkinter as tk
 from tkinter import ttk
 import datetime
-from db import init_db, add_session, stop_session, fetch_sessions, fetch_daily_totals
+from db import (
+    init_db,
+    add_session,
+    stop_session,
+    fetch_sessions,
+    fetch_daily_totals,
+    get_background_color,
+)
 from time_utils import format_datetime, format_duration
 from ui_modals import (
     open_edit_modal,
     confirm_delete,
     open_all_sessions_window,
     open_all_daily_totals_window,
+    open_settings_window,
 )
 
 
@@ -61,24 +69,30 @@ class ToolTip:
 
 class TimeTrackerApp:
     def __init__(self, root):
+        init_db()
         self.root = root
-        self.root.title("Simple Time Tracker")
-        self.root.geometry("720x560")
+        self.root.title("Clocker")
+        self.root.geometry("1080x720")
         self.root.resizable(True, True)
+        self.root.configure(background=get_background_color())
 
         self.start_icon = tk.PhotoImage(file=resource_path("icons/start.png"))
         self.stop_icon = tk.PhotoImage(file=resource_path("icons/stop.png"))
         self.refresh_icon = tk.PhotoImage(file=resource_path("icons/refresh.png"))
         self.view_icon = tk.PhotoImage(file=resource_path("icons/view.png"))
+        self.settings_icon = tk.PhotoImage(file=resource_path("icons/settings.png"))
 
-        btn_frame = ttk.Frame(root)
-        btn_frame.pack(pady=10)
+        style = ttk.Style()
+        style.configure("btn.TFrame", background=get_background_color())
+
+        btn_frame = ttk.Frame(root, style="btn.TFrame")
+        btn_frame.pack()
 
         self.start_button = ttk.Button(
             btn_frame,
             image=self.start_icon,
             command=self.start_tracking,
-            width=20,
+            width=5,
             compound="left",
         )
         self.start_button.grid(row=0, column=0, padx=5)
@@ -88,18 +102,18 @@ class TimeTrackerApp:
             btn_frame,
             image=self.stop_icon,
             command=self.stop_tracking,
+            width=5,
             state=tk.DISABLED,
-            width=20,
             compound="left",
         )
-        self.stop_button.grid(row=0, column=1, padx=5)
+        self.stop_button.grid(row=0, column=1, padx=5, pady=15, ipady=0, ipadx=0)
         ToolTip(self.stop_button, "Stop")
 
         self.refresh_button = ttk.Button(
             btn_frame,
             image=self.refresh_icon,
             command=self.refresh_all,
-            width=20,
+            width=5,
             compound="left",
         )
         self.refresh_button.grid(row=0, column=2, padx=5)
@@ -109,11 +123,21 @@ class TimeTrackerApp:
             btn_frame,
             image=self.view_icon,
             command=lambda: open_all_sessions_window(self.root),
-            width=20,
+            width=5,
             compound="left",
         )
         self.view_all_button.grid(row=0, column=3, padx=5)
         ToolTip(self.view_all_button, "View All Sessions")
+
+        self.settings_button = ttk.Button(
+            btn_frame,
+            image=self.settings_icon,
+            command=lambda: open_settings_window(self.root, style),
+            width=0,
+            compound="left",
+        )
+        self.settings_button.grid(row=0, column=4, padx=5, pady=0, ipadx=5)
+        ToolTip(self.settings_button, "Open Settings")
 
         # --- Live Timer ---
         self.timer_label = ttk.Label(
@@ -141,7 +165,7 @@ class TimeTrackerApp:
         self.tree.pack(pady=5)
 
         # --- Daily Totals ---
-        daily_label_frame = ttk.Frame(root)
+        daily_label_frame = ttk.Frame(root, style="btn.TFrame")
         daily_label_frame.pack(pady=5)
         ttk.Label(
             daily_label_frame, text="Daily Totals", font=("Helvetica", 12, "bold")
@@ -171,7 +195,6 @@ class TimeTrackerApp:
         self.is_tracking = False
         self.start_time = None
 
-        init_db()
         self.check_running_session()
         self.refresh_all()
 
