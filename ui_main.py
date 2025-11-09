@@ -8,6 +8,11 @@ from db import (
     fetch_sessions,
     fetch_daily_totals,
     get_background_color,
+    get_daily_goal,
+    get_weekly_goal,
+    fetch_todays_sessions,
+    fetch_this_weeks_sessions_total,
+    fetch_current_live_session_time,
 )
 from time_utils import format_datetime, format_duration
 from ui_modals import (
@@ -184,6 +189,9 @@ class TimeTrackerApp:
         self.daily_tree.column("date", width=150, anchor="center")
         self.daily_tree.column("total", width=100, anchor="center")
         self.daily_tree.pack(pady=5)
+        self.goals_label_frame = ttk.Frame(root, style="btn.TFrame")
+        self.goals_label_frame.pack(pady=5)
+        self.load_goals()
 
         # --- Snackbar / Status ---
         self.status_label = ttk.Label(root, text="", relief="sunken", anchor="w")
@@ -245,7 +253,11 @@ class TimeTrackerApp:
 
     def refresh_all(self):
         self.load_sessions()
-        self.load_daily_totals()
+        current_live_timer = fetch_current_live_session_time()
+        self.load_daily_totals(
+            float(current_live_timer * 3600) if current_live_timer else 0.0
+        )
+        self.load_goals(current_live_timer)
 
     def load_sessions(self):
         for row in self.tree.get_children():
@@ -262,11 +274,13 @@ class TimeTrackerApp:
                 ),
             )
 
-    def load_daily_totals(self):
+    def load_daily_totals(self, time_on_refresh=0.0):
         for row in self.daily_tree.get_children():
             self.daily_tree.delete(row)
         for date, total in sorted(fetch_daily_totals().items(), reverse=True)[:5]:
-            self.daily_tree.insert("", tk.END, values=(date, format_duration(total)))
+            self.daily_tree.insert(
+                "", tk.END, values=(date, format_duration(total + time_on_refresh))
+            )
 
     def handle_table_click(self, event):
         item = self.tree.identify_row(event.y)
@@ -291,3 +305,48 @@ class TimeTrackerApp:
             elapsed = datetime.datetime.now() - self.start_time
             self.timer_label.config(text=format_duration(elapsed.total_seconds()))
             self.root.after(1000, self.update_timer)
+
+    def load_goals(self, time_on_refresh=0):
+        total_today = fetch_todays_sessions()
+        total_this_week = fetch_this_weeks_sessions_total()
+
+        def to_seconds(value):
+            if not isinstance(value, float):
+                try:
+                    value = float(value)
+                except Exception:
+                    return 0
+
+            return int(value * 3600)
+
+        def get_remaining_time(goal, current, time_on_refresh):
+            seconds = (
+                to_seconds(goal) - to_seconds(current) - to_seconds(time_on_refresh)
+            )
+            hours, remainder = divmod(seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+        daily_goal = get_daily_goal()
+        weekly_goal = get_weekly_goal()
+
+        self.daily_goal_label = ttk.Label(
+            self.goals_label_frame, text=f"Your daily goal: {daily_goal} hours"
+        )
+        self.remaining_daily = ttk.Label(
+            self.goals_label_frame,
+            text=f"{get_remaining_time(daily_goal, total_today, time_on_refresh)}h left",
+        )
+
+        self.weekly_goal_label = ttk.Label(
+            self.goals_label_frame, text=f"Your weekly goal: {weekly_goal} hours"
+        )
+        self.remaining_weekly = ttk.Label(
+            self.goals_label_frame,
+            text=f"{get_remaining_time(weekly_goal, total_this_week, time_on_refresh)}h left",
+        )
+
+        self.daily_goal_label.grid(row=0, column=0, padx=5, pady=5)
+        self.remaining_daily.grid(row=0, column=1, padx=5, pady=5)
+        self.weekly_goal_label.grid(row=1, column=0, padx=5, pady=5)
+        self.remaining_weekly.grid(row=1, column=1, padx=5, pady=5)

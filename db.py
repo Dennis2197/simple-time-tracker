@@ -132,6 +132,95 @@ def fetch_daily_totals():
     return daily
 
 
+def fetch_current_live_session_time():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT start_time FROM sessions
+        WHERE end_time IS NULL
+        """,
+    )
+
+    start_time = c.fetchall()
+    conn.close()
+    if len(start_time) == 1:
+        return (
+            datetime.datetime.now() - datetime.datetime.fromisoformat(start_time[0][0])
+        ).total_seconds() / 3600
+    else:
+        return None
+
+
+def fetch_todays_sessions():
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT start_time, end_time FROM sessions
+        WHERE (start_time LIKE ? OR end_time LIKE ?) AND end_time IS NOT NULL
+        """,
+        (f"{today}%", f"{today}%"),
+    )
+
+    sessions = c.fetchall()
+    conn.close()
+    return get_total_hours_from_sessions(sessions)
+
+
+def get_total_hours_from_sessions(sessions):
+    total_hours = 0.0
+    for start_str, end_str in sessions:
+        start = datetime.datetime.fromisoformat(start_str)
+        end = datetime.datetime.fromisoformat(end_str)
+        total_hours += (end - start).total_seconds() / 3600
+
+    return total_hours
+
+
+def get_start_of_week():
+    today = datetime.date.today()
+    start_of_week = today - datetime.timedelta(
+        days=today.weekday()
+    )  # Monday of this week
+    return start_of_week
+
+
+def get_end_of_week():
+    start_of_week = get_start_of_week()
+    end_of_week = start_of_week + datetime.timedelta(days=6)  # Sunday of this week
+    return end_of_week
+
+
+# Function to query sessions for the current week
+def fetch_this_weeks_sessions_total():
+    # Get start and end of this week
+    start_of_week = get_start_of_week()
+    end_of_week = get_end_of_week()
+
+    # Convert to ISO 8601 format with time
+    start_of_week_str = f"{start_of_week}T00:00:00.000000"
+    end_of_week_str = f"{end_of_week}T23:59:59.999999"
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+
+    # Query sessions where start_time or end_time is within this week
+    c.execute(
+        """
+        SELECT start_time, end_time FROM sessions
+        WHERE ((start_time BETWEEN ? AND ?) OR (end_time BETWEEN ? AND ?)) AND end_time IS NOT NULL
+    """,
+        (start_of_week_str, end_of_week_str, start_of_week_str, end_of_week_str),
+    )
+
+    sessions = c.fetchall()
+    conn.close()
+
+    return get_total_hours_from_sessions(sessions)
+
+
 def get_background_color():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
